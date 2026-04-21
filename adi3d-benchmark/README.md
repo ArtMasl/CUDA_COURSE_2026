@@ -13,8 +13,8 @@ ADI 3D Benchmark
 
 Запуск:
 
-    ./adi3d_cpu -L 384 -verify                   # CPU версия
-    ./adi3d_cuda -L 384 -verify                  # GPU версия
+    ./adi3d_cpu -L 384                   # CPU версия
+    ./adi3d_cuda -L 384                  # GPU версия
 
 Параметры:
 
