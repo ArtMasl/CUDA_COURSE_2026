@@ -1,0 +1,21 @@
+#BSUB -J jac3d_test
+#BSUB -n 4
+#BSUB -W 0:30
+#BSUB -q short
+#BSUB -gpu "num=1:mode=exclusive_process"
+#BSUB -o jac3d_%J.out
+#BSUB -eo jac3d_%J.err
+
+echo "=== Hostname ==="
+hostname
+
+echo "=== CPU Info ==="
+lscpu | grep -E "CPU|Thread|Core|Socket"
+
+echo "=== GPU Info ==="
+nvidia-smi -L
+
+echo "=== Running Tests ==="
+cd ~/CUDA_COURSE_2026/jac3d-benchmark
+./jac3d_cpu -L 900
+./jac3d_cuda -L 900

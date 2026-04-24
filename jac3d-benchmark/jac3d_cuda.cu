@@ -33,26 +33,16 @@
 #define THREADS_PER_BLOCK 256
 #define MAX_BLOCKS 65535
 
-__global__ void jacobi_reduce_kernel(double* A, double* B, double* block_max, int L, size_t total) {
-    __shared__ double shared_max[THREADS_PER_BLOCK];
-    
-    int tid = threadIdx.x;
+__global__ void jacobi_kernel(double* A, double* B, int L, size_t total) {
     int stride = blockDim.x * gridDim.x;
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     
-    shared_max[tid] = 0.0;
-    
-    for (int i = idx; i < total; i += stride) {
+    for (size_t i = idx; i < total; i += stride) {
         int k = i % L;
         int j = (i / L) % L;
         int ii = i / (L * L);
         
         if (ii > 0 && ii < L - 1 && j > 0 && j < L - 1 && k > 0 && k < L - 1) {
-            double diff = fabs(B[i] - A[i]);
-            if (diff > shared_max[tid]) shared_max[tid] = diff;
-            
-            A[i] = B[i];
-            
             B[i] = (A[(ii-1) * L * L + j * L + k] + 
                     A[ii * L * L + (j-1) * L + k] + 
                     A[ii * L * L + j * L + (k-1)] + 
@@ -61,16 +51,37 @@ __global__ void jacobi_reduce_kernel(double* A, double* B, double* block_max, in
                     A[(ii+1) * L * L + j * L + k]) / 6.0;
         }
     }
-    
+}
+
+__global__ void copy_and_reduce_kernel(double* A, double* B, double* block_max, int L, size_t total) {
+    __shared__ double shared_max[THREADS_PER_BLOCK];
+    int tid = threadIdx.x;
+    int stride = blockDim.x * gridDim.x;
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+
+    double local_max = 0.0;
+    for (size_t i = idx; i < total; i += stride) {
+        int k = i % L;
+        int j = (i / L) % L;
+        int ii = i / (L * L);
+        
+        if (ii > 0 && ii < L - 1 && j > 0 && j < L - 1 && k > 0 && k < L - 1) {
+            double diff = fabs(B[i] - A[i]);
+            if (diff > local_max) local_max = diff;
+            A[i] = B[i];
+        }
+    }
+    shared_max[tid] = local_max;
     __syncthreads();
-    
+
     for (int s = blockDim.x / 2; s > 0; s >>= 1) {
         if (tid < s) {
-            shared_max[tid] = fmax(shared_max[tid], shared_max[tid + s]);
+            if (shared_max[tid] < shared_max[tid + s])
+                shared_max[tid] = shared_max[tid + s];
         }
         __syncthreads();
     }
-    
+
     if (tid == 0) {
         block_max[blockIdx.x] = shared_max[0];
     }
@@ -110,7 +121,7 @@ size_t calculate_max_L(double memory_fraction) {
 
 int main(int argc, char** argv) {
     int L = 384;
-    int itmax = 100;
+    int itmax = 20;
     double maxeps = 0.5;
     int verify_mode = 0;
     double memory_fraction = 0.85;
@@ -157,15 +168,17 @@ int main(int argc, char** argv) {
     double* h_A = (double*)malloc(sz);
     double* h_B = (double*)malloc(sz);
     
-    for (size_t idx = 0; idx < total; idx++) h_A[idx] = 0.0;
+    for (size_t idx = 0; idx < total; idx++) {
+        h_A[idx] = 0.0;
+        h_B[idx] = 0.0;
+    }
     for (int i = 0; i < L; i++)
         for (int j = 0; j < L; j++)
             for (int k = 0; k < L; k++) {
                 int idx = i * L * L + j * L + k;
-                if (i == 0 || j == 0 || k == 0 || i == L - 1 || j == L - 1 || k == L - 1)
-                    h_B[idx] = 0.0;
-                else
+                if (i > 0 && i < L - 1 && j > 0 && j < L - 1 && k > 0 && k < L - 1) {
                     h_B[idx] = 4.0 + i + j + k;
+                }
             }
     
     printf("Copying data to GPU...\n");
@@ -192,9 +205,8 @@ int main(int argc, char** argv) {
     double* h_block_max = (double*)malloc(num_blocks * sizeof(double));
     
     for (it = 1; it <= itmax; it++) {
-        jacobi_reduce_kernel<<<num_blocks, THREADS_PER_BLOCK>>>(d_A, d_B, d_block_max, L, total);
+        copy_and_reduce_kernel<<<num_blocks, THREADS_PER_BLOCK>>>(d_A, d_B, d_block_max, L, total);
         KERNEL_CHECK();
-        
         CUDA_CHECK(cudaDeviceSynchronize());
         
         CUDA_CHECK(cudaMemcpy(h_block_max, d_block_max, num_blocks * sizeof(double),
@@ -206,8 +218,11 @@ int main(int argc, char** argv) {
         }
         
         printf(" IT = %4i   EPS = %14.7E\n", it, eps);
-        
         if (eps < maxeps) break;
+        
+        jacobi_kernel<<<num_blocks, THREADS_PER_BLOCK>>>(d_A, d_B, L, total);
+        KERNEL_CHECK();
+        CUDA_CHECK(cudaDeviceSynchronize());
     }
     
     CUDA_CHECK(cudaEventRecord(stop));
@@ -220,7 +235,7 @@ int main(int argc, char** argv) {
     
     printf("\n=== Results ===\n");
     printf("Size            = %4d x %4d x %4d\n", L, L, L);
-    printf("Iterations      = %12d\n", it);
+    printf("Iterations      = %12d\n", it-1);
     printf("Time in seconds = %12.4f\n", elapsed_ms / 1000.0);
     printf("Operation type  =   floating point\n");
     printf("Performance     = %10.2f MFLOPS\n",

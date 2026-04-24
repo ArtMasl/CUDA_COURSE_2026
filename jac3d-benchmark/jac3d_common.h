@@ -33,14 +33,15 @@ static inline double* allocate_3d_array(size_t L) {
 }
 
 static inline void init_arrays(double* A, double* B, size_t L) {
+    size_t idx, i, j, k;
     size_t total = L * L * L;
-    for (size_t idx = 0; idx < total; idx++) {
+    for (idx = 0; idx < total; idx++) {
         A[idx] = 0.0;
     }
     
-    for (size_t i = 0; i < L; i++) {
-        for (size_t j = 0; j < L; j++) {
-            for (size_t k = 0; k < L; k++) {
+    for (i = 0; i < L; i++) {
+        for (j = 0; j < L; j++) {
+            for (k = 0; k < L; k++) {
                 size_t idx = i * L * L + j * L + k;
                 if (i == 0 || j == 0 || k == 0 || 
                     i == L - 1 || j == L - 1 || k == L - 1) {
@@ -54,10 +55,11 @@ static inline void init_arrays(double* A, double* B, size_t L) {
 }
 
 static inline int verify_arrays(double* cpu_A, double* gpu_A, size_t L, double tolerance) {
+    size_t idx;
     size_t total = L * L * L;
     double max_diff = 0.0;
     
-    for (size_t idx = 0; idx < total; idx++) {
+    for (idx = 0; idx < total; idx++) {
         double diff = fabs(cpu_A[idx] - gpu_A[idx]);
         if (diff > max_diff) max_diff = diff;
     }

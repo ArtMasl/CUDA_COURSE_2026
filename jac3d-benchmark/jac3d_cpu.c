@@ -3,6 +3,7 @@
 
 void jac3d_cpu(double* A, double* B, size_t L, int itmax, double maxeps, 
                Jac3DResult* result) {
+    size_t i, j, k;
     double startt = get_time();
     int it;
     double eps = 0.0;
@@ -11,9 +12,9 @@ void jac3d_cpu(double* A, double* B, size_t L, int itmax, double maxeps,
         eps = 0.0;
         
         #pragma omp parallel for collapse(3) reduction(max:eps)
-        for (size_t i = 1; i < L - 1; i++) {
-            for (size_t j = 1; j < L - 1; j++) {
-                for (size_t k = 1; k < L - 1; k++) {
+        for (i = 1; i < L - 1; i++) {
+            for (j = 1; j < L - 1; j++) {
+                for (k = 1; k < L - 1; k++) {
                     size_t idx = i * L * L + j * L + k;
                     double tmp = fabs(B[idx] - A[idx]);
                     if (tmp > eps) eps = tmp;
@@ -23,9 +24,9 @@ void jac3d_cpu(double* A, double* B, size_t L, int itmax, double maxeps,
         }
         
         #pragma omp parallel for collapse(3)
-        for (size_t i = 1; i < L - 1; i++) {
-            for (size_t j = 1; j < L - 1; j++) {
-                for (size_t k = 1; k < L - 1; k++) {
+        for (i = 1; i < L - 1; i++) {
+            for (j = 1; j < L - 1; j++) {
+                for (k = 1; k < L - 1; k++) {
                     size_t idx = i * L * L + j * L + k;
                     B[idx] = (A[(i-1) * L * L + j * L + k] + 
                               A[i * L * L + (j-1) * L + k] + 
@@ -53,12 +54,13 @@ void jac3d_cpu(double* A, double* B, size_t L, int itmax, double maxeps,
 }
 
 int main(int argc, char** argv) {
+    int i;
     size_t L = 384;
-    int itmax = 100;
+    int itmax = 20;
     double maxeps = 0.5;
     int verify_mode = 0;
     
-    for (int i = 1; i < argc; i++) {
+    for (i = 1; i < argc; i++) {
         if (strcasecmp(argv[i], "-L") == 0 && i + 1 < argc) {
             L = (size_t)atol(argv[++i]);
         } else if (strcasecmp(argv[i], "-itmax") == 0 && i + 1 < argc) {
@@ -70,7 +72,7 @@ int main(int argc, char** argv) {
         } else if (strcasecmp(argv[i], "-h") == 0 || strcasecmp(argv[i], "--help") == 0) {
             printf("Usage: %s [-L size] [-itmax iterations] [-maxeps epsilon] [-verify]\n", argv[0]);
             printf("  -L       : Grid size (default: 384)\n");
-            printf("  -itmax   : Max iterations (default: 100)\n");
+            printf("  -itmax   : Max iterations (default: 20)\n");
             printf("  -maxeps  : Convergence threshold (default: 0.5)\n");
             printf("  -verify  : Enable verification mode (save result)\n");
             return 0;
@@ -102,7 +104,7 @@ int main(int argc, char** argv) {
     
     printf("\n=== Results ===\n");
     printf("Size            = %4d x %4d x %4d\n", (int)L, (int)L, (int)L);
-    printf("Iterations      = %12d\n", result.iterations);
+    printf("Iterations      = %12d\n", result.iterations-1);
     printf("Time in seconds = %12.4f\n", result.time_sec);
     printf("Operation type  =   floating point\n");
     printf("Performance     = %10.2f MFLOPS\n", 
