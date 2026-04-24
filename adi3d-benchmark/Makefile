@@ -1,6 +1,6 @@
 CC = gcc
 NVCC = nvcc
-CFLAGS = -O3 -Wall -fopenmp
+CFLAGS = -O3 -Wall -fopenmp -std=gnu99
 NVCCFLAGS = -O2 -arch=sm_89
 LDFLAGS = -lm
 
