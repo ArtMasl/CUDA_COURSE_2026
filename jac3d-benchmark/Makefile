@@ -1,4 +1,3 @@
-# Makefile for Jacobi 3D Benchmark - Linux/WSL
 CC = gcc
 NVCC = nvcc
 CFLAGS = -O3 -Wall -fopenmp -std=gnu99
