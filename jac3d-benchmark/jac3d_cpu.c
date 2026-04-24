@@ -54,6 +54,7 @@ void jac3d_cpu(double* A, double* B, size_t L, int itmax, double maxeps,
 }
 
 int main(int argc, char** argv) {
+    int i;
     size_t L = 384;
     int itmax = 100;
     double maxeps = 0.5;
