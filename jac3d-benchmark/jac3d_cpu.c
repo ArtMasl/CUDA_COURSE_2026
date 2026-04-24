@@ -3,6 +3,7 @@
 
 void jac3d_cpu(double* A, double* B, size_t L, int itmax, double maxeps, 
                Jac3DResult* result) {
+    size_t i, j, k;
     double startt = get_time();
     int it;
     double eps = 0.0;
@@ -11,9 +12,9 @@ void jac3d_cpu(double* A, double* B, size_t L, int itmax, double maxeps,
         eps = 0.0;
         
         #pragma omp parallel for collapse(3) reduction(max:eps)
-        for (size_t i = 1; i < L - 1; i++) {
-            for (size_t j = 1; j < L - 1; j++) {
-                for (size_t k = 1; k < L - 1; k++) {
+        for (i = 1; i < L - 1; i++) {
+            for (j = 1; j < L - 1; j++) {
+                for (k = 1; k < L - 1; k++) {
                     size_t idx = i * L * L + j * L + k;
                     double tmp = fabs(B[idx] - A[idx]);
                     if (tmp > eps) eps = tmp;
@@ -23,9 +24,9 @@ void jac3d_cpu(double* A, double* B, size_t L, int itmax, double maxeps,
         }
         
         #pragma omp parallel for collapse(3)
-        for (size_t i = 1; i < L - 1; i++) {
-            for (size_t j = 1; j < L - 1; j++) {
-                for (size_t k = 1; k < L - 1; k++) {
+        for (i = 1; i < L - 1; i++) {
+            for (j = 1; j < L - 1; j++) {
+                for (k = 1; k < L - 1; k++) {
                     size_t idx = i * L * L + j * L + k;
                     B[idx] = (A[(i-1) * L * L + j * L + k] + 
                               A[i * L * L + (j-1) * L + k] + 
@@ -58,7 +59,7 @@ int main(int argc, char** argv) {
     double maxeps = 0.5;
     int verify_mode = 0;
     
-    for (int i = 1; i < argc; i++) {
+    for (i = 1; i < argc; i++) {
         if (strcasecmp(argv[i], "-L") == 0 && i + 1 < argc) {
             L = (size_t)atol(argv[++i]);
         } else if (strcasecmp(argv[i], "-itmax") == 0 && i + 1 < argc) {
