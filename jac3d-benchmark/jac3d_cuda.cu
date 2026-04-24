@@ -223,7 +223,7 @@ int main(int argc, char** argv) {
     
     printf("\n=== Results ===\n");
     printf("Size            = %4d x %4d x %4d\n", L, L, L);
-    printf("Iterations      = %12d\n", it);
+    printf("Iterations      = %12d\n", it-1);
     printf("Time in seconds = %12.4f\n", elapsed_ms / 1000.0);
     printf("Operation type  =   floating point\n");
     printf("Performance     = %10.2f MFLOPS\n",
