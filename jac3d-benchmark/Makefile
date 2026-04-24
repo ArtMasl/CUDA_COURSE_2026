@@ -1,7 +1,7 @@
 CC = gcc
 NVCC = nvcc
 CFLAGS = -O3 -Wall -fopenmp -std=gnu99
-NVCCFLAGS = -O2 -arch=sm_89
+NVCCFLAGS = -O2 -arch=sm_60
 LDFLAGS = -lm
 
 all: jac3d_cpu jac3d_cuda verify
