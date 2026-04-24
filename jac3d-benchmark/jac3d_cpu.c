@@ -56,7 +56,7 @@ void jac3d_cpu(double* A, double* B, size_t L, int itmax, double maxeps,
 int main(int argc, char** argv) {
     int i;
     size_t L = 384;
-    int itmax = 100;
+    int itmax = 20;
     double maxeps = 0.5;
     int verify_mode = 0;
     
@@ -72,7 +72,7 @@ int main(int argc, char** argv) {
         } else if (strcasecmp(argv[i], "-h") == 0 || strcasecmp(argv[i], "--help") == 0) {
             printf("Usage: %s [-L size] [-itmax iterations] [-maxeps epsilon] [-verify]\n", argv[0]);
             printf("  -L       : Grid size (default: 384)\n");
-            printf("  -itmax   : Max iterations (default: 100)\n");
+            printf("  -itmax   : Max iterations (default: 20)\n");
             printf("  -maxeps  : Convergence threshold (default: 0.5)\n");
             printf("  -verify  : Enable verification mode (save result)\n");
             return 0;
