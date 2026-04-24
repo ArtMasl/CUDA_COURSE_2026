@@ -104,7 +104,7 @@ int main(int argc, char** argv) {
     
     printf("\n=== Results ===\n");
     printf("Size            = %4d x %4d x %4d\n", (int)L, (int)L, (int)L);
-    printf("Iterations      = %12d\n", result.iterations);
+    printf("Iterations      = %12d\n", result.iterations-1);
     printf("Time in seconds = %12.4f\n", result.time_sec);
     printf("Operation type  =   floating point\n");
     printf("Performance     = %10.2f MFLOPS\n", 
