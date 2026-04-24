@@ -35,14 +35,15 @@
 
 __global__ void jacobi_reduce_kernel(double* A, double* B, double* block_max, int L, size_t total) {
     __shared__ double shared_max[THREADS_PER_BLOCK];
-    
+
+    int i, s;
     int tid = threadIdx.x;
     int stride = blockDim.x * gridDim.x;
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     
     shared_max[tid] = 0.0;
     
-    for (int i = idx; i < total; i += stride) {
+    for (i = idx; i < total; i += stride) {
         int k = i % L;
         int j = (i / L) % L;
         int ii = i / (L * L);
@@ -64,7 +65,7 @@ __global__ void jacobi_reduce_kernel(double* A, double* B, double* block_max, in
     
     __syncthreads();
     
-    for (int s = blockDim.x / 2; s > 0; s >>= 1) {
+    for (s = blockDim.x / 2; s > 0; s >>= 1) {
         if (tid < s) {
             shared_max[tid] = fmax(shared_max[tid], shared_max[tid + s]);
         }
@@ -109,13 +110,15 @@ size_t calculate_max_L(double memory_fraction) {
 }
 
 int main(int argc, char** argv) {
+    size_t idx;
+    int i, j, k;
     int L = 384;
     int itmax = 100;
     double maxeps = 0.5;
     int verify_mode = 0;
     double memory_fraction = 0.85;
     
-    for (int i = 1; i < argc; i++) {
+    for (i = 1; i < argc; i++) {
         if (strcasecmp(argv[i], "-L") == 0 && i + 1 < argc) L = atoi(argv[++i]);
         else if (strcasecmp(argv[i], "-itmax") == 0 && i + 1 < argc) itmax = atoi(argv[++i]);
         else if (strcasecmp(argv[i], "-maxeps") == 0 && i + 1 < argc) maxeps = atof(argv[++i]);
@@ -156,11 +159,11 @@ int main(int argc, char** argv) {
     
     double* h_A = (double*)malloc(sz);
     double* h_B = (double*)malloc(sz);
-    
+
     for (size_t idx = 0; idx < total; idx++) h_A[idx] = 0.0;
-    for (int i = 0; i < L; i++)
-        for (int j = 0; j < L; j++)
-            for (int k = 0; k < L; k++) {
+    for (i = 0; i < L; i++)
+        for (j = 0; j < L; j++)
+            for (k = 0; k < L; k++) {
                 int idx = i * L * L + j * L + k;
                 if (i == 0 || j == 0 || k == 0 || i == L - 1 || j == L - 1 || k == L - 1)
                     h_B[idx] = 0.0;
@@ -201,7 +204,7 @@ int main(int argc, char** argv) {
                               cudaMemcpyDeviceToHost));
         
         eps = 0.0;
-        for (int i = 0; i < num_blocks; i++) {
+        for (i = 0; i < num_blocks; i++) {
             if (h_block_max[i] > eps) eps = h_block_max[i];
         }
         
