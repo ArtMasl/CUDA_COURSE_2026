@@ -113,7 +113,7 @@ int main(int argc, char** argv) {
     size_t idx;
     int i, j, k;
     int L = 384;
-    int itmax = 100;
+    int itmax = 20;
     double maxeps = 0.5;
     int verify_mode = 0;
     double memory_fraction = 0.85;
