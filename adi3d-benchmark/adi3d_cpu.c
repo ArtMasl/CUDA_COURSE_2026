@@ -5,9 +5,9 @@
 #include <omp.h>
 
 #ifdef _WIN32
-    #include <windows.h>
+#include <windows.h>
 #else
-    #include <time.h>
+#include <time.h>
 #endif
 
 #define Max(a, b) ((a) > (b) ? (a) : (b))
@@ -34,7 +34,6 @@ double get_time() {
 int main(int argc, char** argv) {
     int L = 384;
     int itmax = 10;
-    double maxeps = 0.01;
     
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "-L") == 0 && i + 1 < argc) {
@@ -72,50 +71,51 @@ int main(int argc, char** argv) {
     for (it = 1; it <= itmax; it++) {
         eps = 0.0;
         
-        #pragma omp parallel for collapse(3)
-        for (int i = 1; i < L - 1; i++)
-            for (int j = 1; j < L - 1; j++)
-                for (int k = 1; k < L - 1; k++) {
+        #pragma omp parallel for collapse(2)
+        for (int j = 1; j < L - 1; j++)
+            for (int k = 1; k < L - 1; k++)
+                for (int i = 1; i < L - 1; i++) {
                     int idx = i * L * L + j * L + k;
                     a[idx] = (a[(i-1) * L * L + j * L + k] + 
                               a[(i+1) * L * L + j * L + k]) / 2.0;
                 }
         
-        #pragma omp parallel for collapse(3)
+        #pragma omp parallel for collapse(2)
         for (int i = 1; i < L - 1; i++)
-            for (int j = 1; j < L - 1; j++)
-                for (int k = 1; k < L - 1; k++) {
+            for (int k = 1; k < L - 1; k++)
+                for (int j = 1; j < L - 1; j++) {
                     int idx = i * L * L + j * L + k;
                     a[idx] = (a[i * L * L + (j-1) * L + k] + 
                               a[i * L * L + (j+1) * L + k]) / 2.0;
                 }
         
-        #pragma omp parallel for collapse(3) reduction(max:eps)
+        #pragma omp parallel for collapse(2) reduction(max:eps)
         for (int i = 1; i < L - 1; i++)
-            for (int j = 1; j < L - 1; j++)
+            for (int j = 1; j < L - 1; j++) {
+                double local_eps = 0.0;
                 for (int k = 1; k < L - 1; k++) {
                     int idx = i * L * L + j * L + k;
                     double tmp1 = (a[i * L * L + j * L + (k-1)] + 
                                    a[i * L * L + j * L + (k+1)]) / 2.0;
                     double tmp2 = fabs(a[idx] - tmp1);
-                    if (tmp2 > eps) eps = tmp2;
+                    if (tmp2 > local_eps) local_eps = tmp2;
                     a[idx] = tmp1;
                 }
+                if (local_eps > eps) eps = local_eps;
+            }
         
         printf(" IT = %4i   EPS = %14.7E\n", it, eps);
-        
-        if (eps < maxeps) break;
     }
     
     double endt = get_time();
     
     printf("\n=== Results ===\n");
     printf("Size            = %4d x %4d x %4d\n", L, L, L);
-    printf("Iterations      = %12d\n", it-1);
+    printf("Iterations      = %12d\n", it - 1);
     printf("Time in seconds = %12.4f\n", endt - startt);
     printf("Operation type  =   double precision\n");
     printf("Performance     = %10.2f MFLOPS\n",
-           (2.0 * (L-2) * (L-2) * (L-2) * it * 3) / ((endt - startt) * 1e6));
+           (2.0 * (L-2) * (L-2) * (L-2) * (it-1) * 3) / ((endt - startt) * 1e6));
     printf("===============\n");
     
     free(a);
