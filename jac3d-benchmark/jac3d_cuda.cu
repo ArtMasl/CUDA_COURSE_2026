@@ -2,7 +2,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <math.h>
+#include <cmath>
+#include <thrust/device_ptr.h>
+#include <thrust/extrema.h>
+#include <thrust/iterator/counting_iterator.h>
 
 #ifdef _WIN32
     #include <windows.h>
@@ -30,62 +33,39 @@
         } \
     } while(0)
 
-#define THREADS_PER_BLOCK 256
-#define MAX_BLOCKS 65535
+#define BLOCK_X 32
+#define BLOCK_Y 4
+#define BLOCK_Z 4
+#define IDX(i, j, k, L) ((i) * (L) * (L) + (j) * (L) + (k))
 
-__global__ void jacobi_kernel(double* A, double* B, int L, size_t total) {
-    int stride = blockDim.x * gridDim.x;
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    
-    for (size_t i = idx; i < total; i += stride) {
-        int k = i % L;
-        int j = (i / L) % L;
-        int ii = i / (L * L);
-        
-        if (ii > 0 && ii < L - 1 && j > 0 && j < L - 1 && k > 0 && k < L - 1) {
-            B[i] = (A[(ii-1) * L * L + j * L + k] + 
-                    A[ii * L * L + (j-1) * L + k] + 
-                    A[ii * L * L + j * L + (k-1)] + 
-                    A[ii * L * L + j * L + (k+1)] + 
-                    A[ii * L * L + (j+1) * L + k] + 
-                    A[(ii+1) * L * L + j * L + k]) / 6.0;
-        }
-    }
+__global__ void jacobi_kernel(double* A, double* B, int L) {
+    int k = blockIdx.x * blockDim.x + threadIdx.x;
+    int j = blockIdx.y * blockDim.y + threadIdx.y;
+    int i = blockIdx.z * blockDim.z + threadIdx.z;
+
+    if (i <= 0 || j <= 0 || k <= 0 || i >= L - 1 || j >= L - 1 || k >= L - 1) return;
+
+    int idx = IDX(i, j, k, L);
+    B[idx] = (A[IDX(i-1, j, k, L)] + A[IDX(i, j-1, k, L)] + A[IDX(i, j, k-1, L)] + 
+              A[IDX(i, j, k+1, L)] + A[IDX(i, j+1, k, L)] + A[IDX(i+1, j, k, L)]) / 6.0;
 }
 
-__global__ void copy_and_reduce_kernel(double* A, double* B, double* block_max, int L, size_t total) {
-    __shared__ double shared_max[THREADS_PER_BLOCK];
-    int tid = threadIdx.x;
-    int stride = blockDim.x * gridDim.x;
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+__global__ void init_kernel(double* A, double* B, int L) {
+    int k = blockIdx.x * blockDim.x + threadIdx.x;
+    int j = blockIdx.y * blockDim.y + threadIdx.y;
+    int i = blockIdx.z * blockDim.z + threadIdx.z;
+    if (i >= L || j >= L || k >= L) return;
 
-    double local_max = 0.0;
-    for (size_t i = idx; i < total; i += stride) {
-        int k = i % L;
-        int j = (i / L) % L;
-        int ii = i / (L * L);
-        
-        if (ii > 0 && ii < L - 1 && j > 0 && j < L - 1 && k > 0 && k < L - 1) {
-            double diff = fabs(B[i] - A[i]);
-            if (diff > local_max) local_max = diff;
-            A[i] = B[i];
-        }
-    }
-    shared_max[tid] = local_max;
-    __syncthreads();
-
-    for (int s = blockDim.x / 2; s > 0; s >>= 1) {
-        if (tid < s) {
-            if (shared_max[tid] < shared_max[tid + s])
-                shared_max[tid] = shared_max[tid + s];
-        }
-        __syncthreads();
-    }
-
-    if (tid == 0) {
-        block_max[blockIdx.x] = shared_max[0];
-    }
+    int idx = IDX(i, j, k, L);
+    A[idx] = 0.0;
+    B[idx] = (i == 0 || j == 0 || k == 0 || i == L - 1 || j == L - 1 || k == L - 1) ? 0.0 : (4.0 + i + j + k);
 }
+
+struct DiffFunctor {
+    const double *A;
+    const double *B;
+    __host__ __device__ double operator()(int idx) const { return fabs(B[idx] - A[idx]); }
+};
 
 void print_gpu_info() {
     int device_count;
@@ -165,81 +145,58 @@ int main(int argc, char** argv) {
            (total_mem - free_mem) / 1024.0 / 1024.0,
            total_mem / 1024.0 / 1024.0);
     
-    double* h_A = (double*)malloc(sz);
-    double* h_B = (double*)malloc(sz);
+    dim3 blockSize(BLOCK_X, BLOCK_Y, BLOCK_Z);
+    dim3 gridSize((L + BLOCK_X - 1) / BLOCK_X, 
+                  (L + BLOCK_Y - 1) / BLOCK_Y, 
+                  (L + BLOCK_Z - 1) / BLOCK_Z);
     
-    for (size_t idx = 0; idx < total; idx++) {
-        h_A[idx] = 0.0;
-        h_B[idx] = 0.0;
-    }
-    for (int i = 0; i < L; i++)
-        for (int j = 0; j < L; j++)
-            for (int k = 0; k < L; k++) {
-                int idx = i * L * L + j * L + k;
-                if (i > 0 && i < L - 1 && j > 0 && j < L - 1 && k > 0 && k < L - 1) {
-                    h_B[idx] = 4.0 + i + j + k;
-                }
-            }
+    printf("Initializing data on GPU...\n");
+    init_kernel<<<gridSize, blockSize>>>(d_A, d_B, L);
+    KERNEL_CHECK();
+    CUDA_CHECK(cudaDeviceSynchronize());
+    printf("Data initialized on GPU.\n\n");
     
-    printf("Copying data to GPU...\n");
-    CUDA_CHECK(cudaMemcpy(d_A, h_A, sz, cudaMemcpyHostToDevice));
-    CUDA_CHECK(cudaMemcpy(d_B, h_B, sz, cudaMemcpyHostToDevice));
-    printf("Data copied to GPU.\n\n");
-    
-    int num_blocks = MAX_BLOCKS;
-    
-    printf("Kernel config: %d blocks x %d threads (grid-stride)\n", num_blocks, THREADS_PER_BLOCK);
-    printf("Total threads: %d, Elements: %lu, Stride: %d\n\n", 
-           num_blocks * THREADS_PER_BLOCK, total, num_blocks * THREADS_PER_BLOCK);
-    
-    double* d_block_max;
-    CUDA_CHECK(cudaMalloc(&d_block_max, num_blocks * sizeof(double)));
-    
-    cudaEvent_t start, stop;
-    CUDA_CHECK(cudaEventCreate(&start));
-    CUDA_CHECK(cudaEventCreate(&stop));
-    CUDA_CHECK(cudaEventRecord(start));
+    printf("Kernel config: %dx%dx%d blocks, %dx%dx%d threads\n", 
+           gridSize.x, gridSize.y, gridSize.z, BLOCK_X, BLOCK_Y, BLOCK_Z);
+    printf("Total threads: %d, Elements: %lu\n\n", 
+           gridSize.x * gridSize.y * gridSize.z * BLOCK_X * BLOCK_Y * BLOCK_Z, total);
     
     int it;
     double eps = 0.0;
-    double* h_block_max = (double*)malloc(num_blocks * sizeof(double));
+    
+    clock_t start_t = clock();
     
     for (it = 1; it <= itmax; it++) {
-        copy_and_reduce_kernel<<<num_blocks, THREADS_PER_BLOCK>>>(d_A, d_B, d_block_max, L, total);
-        KERNEL_CHECK();
-        CUDA_CHECK(cudaDeviceSynchronize());
-        
-        CUDA_CHECK(cudaMemcpy(h_block_max, d_block_max, num_blocks * sizeof(double),
-                              cudaMemcpyDeviceToHost));
-        
-        eps = 0.0;
-        for (int i = 0; i < num_blocks; i++) {
-            if (h_block_max[i] > eps) eps = h_block_max[i];
-        }
-        
+        DiffFunctor diff_functor = {d_A, d_B};
+        eps = thrust::transform_reduce(
+            thrust::counting_iterator<int>(0),
+            thrust::counting_iterator<int>(L * L * L),
+            diff_functor,
+            0.0,
+            thrust::maximum<double>()
+        );
+    
         printf(" IT = %4i   EPS = %14.7E\n", it, eps);
         if (eps < maxeps) break;
-        
-        jacobi_kernel<<<num_blocks, THREADS_PER_BLOCK>>>(d_A, d_B, L, total);
+    
+        double *temp = d_A; d_A = d_B; d_B = temp;
+        jacobi_kernel<<<gridSize, blockSize>>>(d_A, d_B, L);
         KERNEL_CHECK();
-        CUDA_CHECK(cudaDeviceSynchronize());
     }
     
-    CUDA_CHECK(cudaEventRecord(stop));
-    CUDA_CHECK(cudaEventSynchronize(stop));
+    clock_t end_t = clock();
+    double elapsed_sec = (double)(end_t - start_t) / CLOCKS_PER_SEC;
     
-    float elapsed_ms;
-    CUDA_CHECK(cudaEventElapsedTime(&elapsed_ms, start, stop));
-    
+    double* h_A = (double*)malloc(sz);
     CUDA_CHECK(cudaMemcpy(h_A, d_A, sz, cudaMemcpyDeviceToHost));
     
     printf("\n=== Results ===\n");
     printf("Size            = %4d x %4d x %4d\n", L, L, L);
     printf("Iterations      = %12d\n", it-1);
-    printf("Time in seconds = %12.4f\n", elapsed_ms / 1000.0);
+    printf("Time in seconds = %12.4f\n", elapsed_sec);
     printf("Operation type  =   floating point\n");
     printf("Performance     = %10.2f MFLOPS\n",
-           (2.0 * (L-2) * (L-2) * (L-2) * it * 7) / (elapsed_ms / 1000.0 * 1e6));
+           (2.0 * (L-2) * (L-2) * (L-2) * it * 7) / (elapsed_sec * 1e6));
     printf("===============\n");
     
     if (verify_mode) {
@@ -252,13 +209,8 @@ int main(int argc, char** argv) {
     }
     
     free(h_A);
-    free(h_B);
-    free(h_block_max);
     CUDA_CHECK(cudaFree(d_A));
     CUDA_CHECK(cudaFree(d_B));
-    CUDA_CHECK(cudaFree(d_block_max));
-    CUDA_CHECK(cudaEventDestroy(start));
-    CUDA_CHECK(cudaEventDestroy(stop));
     
     return 0;
 }
