@@ -159,6 +159,27 @@ __global__ void adi_z_sweep_transposed(
     line_eps[(i - 1) * (ny - 2) + (j - 1)] = local_max;
 }
 
+__global__ void adi_z_sweep_direct(
+    double* __restrict__ a, 
+    double* __restrict__ line_eps, 
+    int L) 
+{
+    int i = blockIdx.y * BLOCK_SIZE + threadIdx.y + 1;
+    int j = blockIdx.x * BLOCK_SIZE + threadIdx.x + 1;
+    if (i >= L - 1 || j >= L - 1) return;
+    
+    double local_max = 0.0;
+    int base = i * L * L + j * L;
+    for (int k = 1; k < L - 1; k++) {
+        int idx = base + k;
+        double tmp = (a[idx - 1] + a[idx + 1]) * 0.5;
+        double diff = fabs(a[idx] - tmp);
+        if (diff > local_max) local_max = diff;
+        a[idx] = tmp;
+    }
+    line_eps[(i - 1) * (L - 2) + (j - 1)] = local_max;
+}
+
 void adi_z_sweep_with_transpose(double* a, double* buf, double* line_eps, int L) {
     transpose_xyz_to_zxy(buf, a, L, L, L);
     
@@ -192,11 +213,13 @@ int main(int argc, char** argv) {
     int itmax = 10;
     double maxeps = 0.01;
     
+    bool use_transpose = true;
     for (int i = 1; i < argc; i++) {
         if (strcasecmp(argv[i], "-L") == 0 && i + 1 < argc) L = atoi(argv[++i]);
         else if (strcasecmp(argv[i], "-itmax") == 0 && i + 1 < argc) itmax = atoi(argv[++i]);
+        else if (strcasecmp(argv[i], "-direct") == 0 || strcasecmp(argv[i], "-no_transpose") == 0) use_transpose = false;
         else if (strcasecmp(argv[i], "-h") == 0 || strcasecmp(argv[i], "--help") == 0) {
-            printf("Usage: ./adi3d_cuda [-L size] [-itmax iterations]\n");
+            printf("Usage: ./adi3d_cuda [-L size] [-itmax iterations] [-direct]\n");
             return 0;
         }
     }
@@ -237,9 +260,13 @@ int main(int argc, char** argv) {
     CUDA_CHECK(cudaEventCreate(&stop));
     
     cudaEvent_t x_start, x_stop, y_start, y_stop, z_start, z_stop;
+    cudaEvent_t z_trans_fwd_start, z_trans_fwd_stop, z_ker_start, z_ker_stop, z_trans_bwd_start, z_trans_bwd_stop;
     CUDA_CHECK(cudaEventCreate(&x_start)); CUDA_CHECK(cudaEventCreate(&x_stop));
     CUDA_CHECK(cudaEventCreate(&y_start)); CUDA_CHECK(cudaEventCreate(&y_stop));
     CUDA_CHECK(cudaEventCreate(&z_start)); CUDA_CHECK(cudaEventCreate(&z_stop));
+    CUDA_CHECK(cudaEventCreate(&z_trans_fwd_start)); CUDA_CHECK(cudaEventCreate(&z_trans_fwd_stop));
+    CUDA_CHECK(cudaEventCreate(&z_ker_start)); CUDA_CHECK(cudaEventCreate(&z_ker_stop));
+    CUDA_CHECK(cudaEventCreate(&z_trans_bwd_start)); CUDA_CHECK(cudaEventCreate(&z_trans_bwd_stop));
     
     CUDA_CHECK(cudaEventRecord(start));
     
@@ -258,7 +285,26 @@ int main(int argc, char** argv) {
         CUDA_CHECK(cudaEventRecord(y_stop));
         
         CUDA_CHECK(cudaEventRecord(z_start));
-        adi_z_sweep_with_transpose(d_a, d_buf, d_line_max, L);
+        if (use_transpose) {
+            CUDA_CHECK(cudaEventRecord(z_trans_fwd_start));
+            transpose_xyz_to_zxy(d_buf, d_a, L, L, L);
+            CUDA_CHECK(cudaEventRecord(z_trans_fwd_stop));
+
+            CUDA_CHECK(cudaEventRecord(z_ker_start));
+            adi_z_sweep_transposed<<<grid_xy, block>>>(d_buf, d_line_max, L, L, L);
+            KERNEL_CHECK();
+            CUDA_CHECK(cudaEventRecord(z_ker_stop));
+
+            CUDA_CHECK(cudaEventRecord(z_trans_bwd_start));
+            transpose_zxy_to_xyz(d_a, d_buf, L, L, L);
+            KERNEL_CHECK();
+            CUDA_CHECK(cudaEventRecord(z_trans_bwd_stop));
+        } else {
+            CUDA_CHECK(cudaEventRecord(z_ker_start));
+            adi_z_sweep_direct<<<grid_xy, block>>>(d_a, d_line_max, L);
+            KERNEL_CHECK();
+            CUDA_CHECK(cudaEventRecord(z_ker_stop));
+        }
         CUDA_CHECK(cudaEventRecord(z_stop));
         
         CUDA_CHECK(cudaDeviceSynchronize());
@@ -280,13 +326,29 @@ int main(int argc, char** argv) {
     CUDA_CHECK(cudaEventSynchronize(stop));
     
     float x_ms, y_ms, z_ms, total_ms;
+    float z_trans_fwd_ms = 0.0f, z_ker_ms = 0.0f, z_trans_bwd_ms = 0.0f;
     CUDA_CHECK(cudaEventElapsedTime(&total_ms, start, stop));
     CUDA_CHECK(cudaEventElapsedTime(&x_ms, x_start, x_stop));
     CUDA_CHECK(cudaEventElapsedTime(&y_ms, y_start, y_stop));
     CUDA_CHECK(cudaEventElapsedTime(&z_ms, z_start, z_stop));
-    
+
+    if (use_transpose) {
+        CUDA_CHECK(cudaEventElapsedTime(&z_trans_fwd_ms, z_trans_fwd_start, z_trans_fwd_stop));
+        CUDA_CHECK(cudaEventElapsedTime(&z_ker_ms, z_ker_start, z_ker_stop));
+        CUDA_CHECK(cudaEventElapsedTime(&z_trans_bwd_ms, z_trans_bwd_start, z_trans_bwd_stop));
+    } else {
+        CUDA_CHECK(cudaEventElapsedTime(&z_ker_ms, z_ker_start, z_ker_stop));
+    }
+
     printf("\n--- Sweep Timing (last iteration) ---\n");
-    printf("X-sweep: %.3f ms, Y-sweep: %.3f ms, Z-sweep: %.3f ms\n", x_ms, y_ms, z_ms);
+    printf("X-sweep: %.3f ms, Y-sweep: %.3f ms, Z-sweep total: %.3f ms\n", x_ms, y_ms, z_ms);
+    if (use_transpose) {
+        printf("  -> Transpose (XYZ->ZXY): %.3f ms\n", z_trans_fwd_ms);
+        printf("  -> Z-kernel (transposed) : %.3f ms\n", z_ker_ms);
+        printf("  -> Transpose (ZXY->XYZ): %.3f ms\n", z_trans_bwd_ms);
+    } else {
+        printf("  -> Z-kernel (direct)     : %.3f ms\n", z_ker_ms);
+    }
     printf("Total time: %.3f ms\n\n", total_ms);
     
     CUDA_CHECK(cudaMemcpy(h_a, d_a, sz, cudaMemcpyDeviceToHost));
@@ -311,6 +373,9 @@ int main(int argc, char** argv) {
     CUDA_CHECK(cudaEventDestroy(x_start)); CUDA_CHECK(cudaEventDestroy(x_stop));
     CUDA_CHECK(cudaEventDestroy(y_start)); CUDA_CHECK(cudaEventDestroy(y_stop));
     CUDA_CHECK(cudaEventDestroy(z_start)); CUDA_CHECK(cudaEventDestroy(z_stop));
+    CUDA_CHECK(cudaEventDestroy(z_trans_fwd_start)); CUDA_CHECK(cudaEventDestroy(z_trans_fwd_stop));
+    CUDA_CHECK(cudaEventDestroy(z_ker_start)); CUDA_CHECK(cudaEventDestroy(z_ker_stop));
+    CUDA_CHECK(cudaEventDestroy(z_trans_bwd_start)); CUDA_CHECK(cudaEventDestroy(z_trans_bwd_stop));
     
     return 0;
 }

@@ -18,4 +18,5 @@ nvidia-smi -L
 echo "=== Running Tests ==="
 cd ~/CUDA_COURSE_2026/adi3d-benchmark
 ./adi3d_cpu -L 900
+./adi3d_cuda -L 900 -direct
 ./adi3d_cuda -L 900

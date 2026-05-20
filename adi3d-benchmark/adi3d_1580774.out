@@ -1,13 +1,13 @@
-Sender: LSF System <lsfadmin@polus-c2-ib.bmc.hpc.cs.msu.ru>
-Subject: Job 1578867: <adi3d_test> in cluster <MSUCluster> Done
+Sender: LSF System <lsfadmin@polus-c4-ib.bmc.hpc.cs.msu.ru>
+Subject: Job 1580774: <adi3d_test> in cluster <MSUCluster> Done
 
-Job <adi3d_test> was submitted from host <polus-ib.bmc.hpc.cs.msu.ru> by user <edu-cmc-nvidia26-02> in cluster <MSUCluster> at Sat May 16 14:22:18 2026
-Job was executed on host(s) <4*polus-c2-ib.bmc.hpc.cs.msu.ru>, in queue <short>, as user <edu-cmc-nvidia26-02> in cluster <MSUCluster> at Sat May 16 14:22:18 2026
+Job <adi3d_test> was submitted from host <polus-ib.bmc.hpc.cs.msu.ru> by user <edu-cmc-nvidia26-02> in cluster <MSUCluster> at Tue May 19 16:02:50 2026
+Job was executed on host(s) <4*polus-c4-ib.bmc.hpc.cs.msu.ru>, in queue <short>, as user <edu-cmc-nvidia26-02> in cluster <MSUCluster> at Tue May 19 16:02:50 2026
 </home_edu/edu-cmc-nvidia26/edu-cmc-nvidia26-02> was used as the home directory.
 </home_edu/edu-cmc-nvidia26/edu-cmc-nvidia26-02/CUDA_COURSE_2026/adi3d-benchmark> was used as the working directory.
-Started at Sat May 16 14:22:18 2026
-Terminated at Sat May 16 14:23:02 2026
-Results reported at Sat May 16 14:23:02 2026
+Started at Tue May 19 16:02:50 2026
+Terminated at Tue May 19 16:03:13 2026
+Results reported at Tue May 19 16:03:13 2026
 
 Your job looked like:
 
@@ -33,6 +33,7 @@ nvidia-smi -L
 echo "=== Running Tests ==="
 cd ~/CUDA_COURSE_2026/adi3d-benchmark
 ./adi3d_cpu -L 900
+./adi3d_cuda -L 900 -direct
 ./adi3d_cuda -L 900
 
 ------------------------------------------------------------
@@ -41,21 +42,21 @@ Successfully completed.
 
 Resource usage summary:
 
-    CPU time :                                   725.77 sec.
-    Max Memory :                                 5479 MB
-    Average Memory :                             1960.67 MB
+    CPU time :                                   779.04 sec.
+    Max Memory :                                 5577 MB
+    Average Memory :                             1124.00 MB
     Total Requested Memory :                     -
     Delta Memory :                               -
     Max Swap :                                   -
     Max Processes :                              4
-    Max Threads :                                7
-    Run time :                                   50 sec.
-    Turnaround time :                            44 sec.
+    Max Threads :                                164
+    Run time :                                   25 sec.
+    Turnaround time :                            23 sec.
 
 The output (if any) follows:
 
 === Hostname ===
-polus-c2-ib.bmc.hpc.cs.msu.ru
+polus-c4-ib.bmc.hpc.cs.msu.ru
 === CPU Info ===
 CPU(s):                160
 On-line CPU(s) list:   0-159
@@ -67,8 +68,8 @@ CPU min MHz:           2061.0000
 NUMA node0 CPU(s):     0-79
 NUMA node1 CPU(s):     80-159
 === GPU Info ===
-GPU 0: Tesla P100-SXM2-16GB (UUID: GPU-e404c8ef-d55a-ed23-481a-612759ec863b)
-GPU 1: Tesla P100-SXM2-16GB (UUID: GPU-070d3d97-ee86-e355-d8ae-3cea269641eb)
+GPU 0: Tesla P100-SXM2-16GB (UUID: GPU-5f859168-5304-6032-bf11-71b7536c0d4d)
+GPU 1: Tesla P100-SXM2-16GB (UUID: GPU-5bd380ed-5ef1-c013-96a0-bf31354c20e1)
 === Running Tests ===
 === ADI 3D CPU (OpenMP) ===
 Grid size: 900 x 900 x 900
@@ -90,9 +91,9 @@ OpenMP threads: 160
 === Results ===
 Size            =  900 x  900 x  900
 Iterations      =           10
-Time in seconds =       5.4648
+Time in seconds =       5.5192
 Operation type  =   double precision
-Performance     =    7950.73 MFLOPS
+Performance     =    7872.35 MFLOPS
 ===============
 === GPU Information ===
 CUDA devices found: 1
@@ -120,20 +121,61 @@ Memory required: 5561.83 MB
  IT =   10   EPS =  9.0896725E-01
 
 --- Sweep Timing (last iteration) ---
-X-sweep: 42.098 ms, Y-sweep: 43.062 ms, Z-sweep: 100.548 ms
-Total time: 1879.451 ms
+X-sweep: 33.111 ms, Y-sweep: 33.904 ms, Z-sweep total: 439.520 ms
+  -> Z-kernel (direct)     : 439.518 ms
+Total time: 5068.437 ms
 
 
 === Results ===
 Size            =  900 x  900 x  900
 Iterations      =           10
-Time in seconds =       1.8795
+Time in seconds =       5.0684
 Operation type  =   double precision
-Performance     =   25429.74 MFLOPS
+Performance     =    9429.72 MFLOPS
+===============
+=== GPU Information ===
+CUDA devices found: 1
+Using device: 0
+Device Name: Tesla P100-SXM2-16GB
+Compute Capability: 6.0
+Total Global Memory: 15.90 GB
+Multiprocessors: 56
+=======================
+
+=== ADI 3D CUDA ===
+Grid size: 900 x 900 x 900
+Memory required: 5561.83 MB
+===================
+
+ IT =    1   EPS =  1.4977753E+01
+ IT =    2   EPS =  7.4833148E+00
+ IT =    3   EPS =  3.7388765E+00
+ IT =    4   EPS =  2.8020717E+00
+ IT =    5   EPS =  2.0999896E+00
+ IT =    6   EPS =  1.6321086E+00
+ IT =    7   EPS =  1.3979074E+00
+ IT =    8   EPS =  1.2004305E+00
+ IT =    9   EPS =  1.0395964E+00
+ IT =   10   EPS =  9.0896725E-01
+
+--- Sweep Timing (last iteration) ---
+X-sweep: 33.283 ms, Y-sweep: 33.810 ms, Z-sweep total: 98.798 ms
+  -> Transpose (XYZ->ZXY): 23.866 ms
+  -> Z-kernel (transposed) : 50.894 ms
+  -> Transpose (ZXY->XYZ): 24.035 ms
+Total time: 1660.865 ms
+
+
+=== Results ===
+Size            =  900 x  900 x  900
+Iterations      =           10
+Time in seconds =       1.6609
+Operation type  =   double precision
+Performance     =   28776.54 MFLOPS
 ===============
 
 
 PS:
 
-Read file <adi3d_1578867.err> for stderr output of this job.
+Read file <adi3d_1580774.err> for stderr output of this job.
 
